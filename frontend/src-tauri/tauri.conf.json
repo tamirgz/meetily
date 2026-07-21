@@ -104,6 +104,9 @@
         ],
         "macOS": {
             "entitlements": "entitlements.plist",
+            "frameworks": [
+                "binaries/onnxruntime/libonnxruntime.dylib"
+            ],
             "signingIdentity": "-",
             "hardenedRuntime": true
         },

@@ -400,10 +400,28 @@ fn initialize_onnx_runtime<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()>
         .path()
         .resource_dir()
         .map_err(|error| anyhow::anyhow!("Failed to resolve application resources: {error}"))?;
-    let library_path = resource_dir
+    let resource_library_path = resource_dir
         .join("binaries")
         .join("onnxruntime")
         .join(LIBRARY_NAME);
+
+    // macOS treats dynamically loaded libraries as nested code. Tauri bundles
+    // and signs this copy in Contents/Frameworks so hardened-runtime library
+    // validation remains enabled. Keep the resource path as a development and
+    // non-macOS fallback.
+    #[cfg(target_os = "macos")]
+    let library_path = std::env::current_exe()
+        .ok()
+        .and_then(|executable| {
+            executable
+                .parent()
+                .and_then(std::path::Path::parent)
+                .map(|contents| contents.join("Frameworks").join(LIBRARY_NAME))
+        })
+        .filter(|path| path.is_file())
+        .unwrap_or(resource_library_path);
+    #[cfg(not(target_os = "macos"))]
+    let library_path = resource_library_path;
 
     if !library_path.is_file() {
         return Err(anyhow::anyhow!(
