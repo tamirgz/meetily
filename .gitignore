@@ -5,6 +5,8 @@
 # dependencies
 /node_modules
 **/models
+!vendor/silero-rs/models/
+!vendor/silero-rs/models/silero_vad.onnx
 /.pnp
 .pnp.*
 .yarn/*
