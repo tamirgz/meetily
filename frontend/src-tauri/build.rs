@@ -1,5 +1,7 @@
 #[path = "build/ffmpeg.rs"]
 mod ffmpeg;
+#[path = "build/onnxruntime.rs"]
+mod onnxruntime;
 
 fn main() {
     // GPU Acceleration Detection and Build Guidance
@@ -17,6 +19,9 @@ fn main() {
 
     // Download and bundle FFmpeg binary at build-time
     ffmpeg::ensure_ffmpeg_binary();
+
+    // Use Microsoft's official ONNX Runtime release instead of ort's CDN.
+    onnxruntime::ensure_onnxruntime_library();
 
     tauri_build::build()
 }

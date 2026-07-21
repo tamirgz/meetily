@@ -3,7 +3,7 @@
  * Auto-detect GPU and run Tauri with appropriate features
  */
 
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -47,10 +47,22 @@ if (platform === 'linux' && feature === 'cuda') {
   env.CMAKE_POSITION_INDEPENDENT_CODE = 'ON';
 }
 
-// Build the tauri command
-let tauriCmd = `tauri ${command}`;
+// Build the Tauri command as an argument list so JSON config overrides work
+// consistently without shell-escaping issues.
+const tauriArgs = [command];
+
+// Release CI can provide the updater signing key. Local DMG builds should not
+// fail after bundling merely because update artifacts cannot be signed.
+if (command === 'build' && !env.TAURI_SIGNING_PRIVATE_KEY) {
+  tauriArgs.push(
+    '--config',
+    JSON.stringify({ bundle: { createUpdaterArtifacts: false } })
+  );
+  console.log('🔓 No updater signing key found; skipping updater artifacts for this local build');
+}
+
 if (feature && feature !== 'none') {
-  tauriCmd += ` -- --features ${feature}`;
+  tauriArgs.push('--', '--features', feature);
   console.log(`🚀 Running: tauri ${command} with features: ${feature}`);
 } else {
   console.log(`🚀 Running: tauri ${command} (CPU-only mode)`);
@@ -59,7 +71,12 @@ console.log('');
 
 // Execute the command
 try {
-  execSync(tauriCmd, { stdio: 'inherit', env });
+  const result = spawnSync('tauri', tauriArgs, { stdio: 'inherit', env });
+  if (result.error) {
+    throw result.error;
+  }
+  process.exit(result.status || 0);
 } catch (err) {
-  process.exit(err.status || 1);
+  console.error(err.message || err);
+  process.exit(1);
 }

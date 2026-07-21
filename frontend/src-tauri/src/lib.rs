@@ -388,6 +388,46 @@ pub fn get_language_preference_internal() -> Option<String> {
     LANGUAGE_PREFERENCE.lock().ok().map(|lang| lang.clone())
 }
 
+fn initialize_onnx_runtime<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    const LIBRARY_NAME: &str = "libonnxruntime.dylib";
+    #[cfg(target_os = "linux")]
+    const LIBRARY_NAME: &str = "libonnxruntime.so";
+    #[cfg(windows)]
+    const LIBRARY_NAME: &str = "onnxruntime.dll";
+
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|error| anyhow::anyhow!("Failed to resolve application resources: {error}"))?;
+    let library_path = resource_dir
+        .join("binaries")
+        .join("onnxruntime")
+        .join(LIBRARY_NAME);
+
+    if !library_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Bundled ONNX Runtime library is missing: {}",
+            library_path.display()
+        ));
+    }
+
+    let committed = ort::init_from(&library_path)
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "Failed to load bundled ONNX Runtime from {}: {error}",
+                library_path.display()
+            )
+        })?
+        .commit();
+    log::info!(
+        "ONNX Runtime initialized from {} (new environment: {})",
+        library_path.display(),
+        committed
+    );
+    Ok(())
+}
+
 pub fn run() {
     log::set_max_level(log::LevelFilter::Info);
 
@@ -419,6 +459,7 @@ pub fn run() {
         .manage(audio::init_system_audio_state())
         .manage(summary::summary_engine::ModelManagerState(Arc::new(tokio::sync::Mutex::new(None))))
         .setup(|_app| {
+            initialize_onnx_runtime(&_app.handle())?;
             log::info!("Application setup complete");
 
             // Initialize system tray
