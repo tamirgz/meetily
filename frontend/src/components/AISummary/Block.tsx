@@ -233,6 +233,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
 
       <div className="relative flex-1 py-0.5 px-1">
         <textarea
+          dir="auto"
           ref={textareaRef}
           value={block.content}
           data-block-id={block.id}
@@ -244,7 +245,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
           onContextMenu={onContextMenu}
           rows={1}
           className={`
-            w-full resize-none overflow-hidden bg-transparent border-none p-0 focus:outline-none focus:ring-0
+            bidi-content w-full resize-none overflow-hidden bg-transparent border-none p-0 focus:outline-none focus:ring-0
             transition-all duration-150 ease-in-out
             ${block.color === 'gray' ? 'text-gray-500' : ''}
             ${block.type === 'heading1' ? 'text-xl font-bold' : ''}

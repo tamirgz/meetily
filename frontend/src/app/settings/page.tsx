@@ -24,7 +24,7 @@ const TABS = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { transcriptModelConfig, setTranscriptModelConfig } = useConfig();
+  const { transcriptModelConfig, setTranscriptModelConfig, selectedLanguage } = useConfig();
 
   // Animation state for tabs
   const [activeTab, setActiveTab] = useState('general');
@@ -119,6 +119,7 @@ export default function SettingsPage() {
               <TranscriptSettings
                 transcriptModelConfig={transcriptModelConfig}
                 setTranscriptModelConfig={setTranscriptModelConfig}
+                selectedLanguage={selectedLanguage}
               />
             </TabsContent>
             <TabsContent value="summaryModels">

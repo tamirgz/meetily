@@ -265,6 +265,7 @@ export function SettingsModals({
             <TranscriptSettings
               transcriptModelConfig={transcriptModelConfig}
               setTranscriptModelConfig={setTranscriptModelConfig}
+              selectedLanguage={selectedLanguage}
               onModelSelect={() => onClose('modelSelector')}
             />
           </div>

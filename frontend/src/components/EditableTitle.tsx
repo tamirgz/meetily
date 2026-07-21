@@ -38,6 +38,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
   return isEditing ? (
     <div className="flex-1">
       <textarea
+        dir="auto"
         ref={titleInputRef}
         value={title}
         onChange={(e) => onChange(e.target.value)}
@@ -49,7 +50,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
             onFinishEditing();
           }
         }}
-        className="text-2xl font-bold bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-3 py-1 w-full resize-none overflow-hidden"
+        className="bidi-content text-2xl font-bold bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-3 py-1 w-full resize-none overflow-hidden"
         style={{ minWidth: '300px', minHeight: '40px' }}
         autoFocus
         rows={1}
@@ -58,7 +59,8 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
   ) : (
     <div className="group flex items-center space-x-2 flex-1">
       <h1
-        className="text-2xl font-bold cursor-pointer hover:bg-gray-50 rounded px-1 flex-1 whitespace-pre-wrap"
+        dir="auto"
+        className="bidi-content text-2xl font-bold cursor-pointer hover:bg-gray-50 rounded px-1 flex-1 whitespace-pre-wrap"
         onClick={onStartEditing}
       >
         {title}

@@ -35,7 +35,7 @@ import { useConfig } from '@/contexts/ConfigContext';
 import { useImportAudio, ImportResult } from '@/hooks/useImportAudio';
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '../Sidebar/SidebarProvider';
-import { LANGUAGES } from '@/constants/languages';
+import { LANGUAGES, languageRequiresWhisper } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 
 
@@ -170,12 +170,8 @@ export function ImportAudioDialog({
     return availableModels.find((m) => m.provider === provider && m.name === name);
   }, [selectedModelKey, availableModels]);
   const isParakeetModel = selectedModel?.provider === 'parakeet';
-
-  useEffect(() => {
-    if (isParakeetModel && selectedLang !== 'auto') {
-      setSelectedLang('auto');
-    }
-  }, [isParakeetModel, selectedLang]);
+  const selectedLanguageNeedsWhisper =
+    isParakeetModel && languageRequiresWhisper(selectedLang);
 
   const handleSelectFile = async () => {
     const info = await selectFile();
@@ -186,6 +182,13 @@ export function ImportAudioDialog({
 
   const handleStartImport = async () => {
     if (!fileInfo) return;
+    if (selectedLanguageNeedsWhisper) {
+      setShowAdvanced(true);
+      toast.error('This language requires Local Whisper', {
+        description: 'Choose a downloaded Whisper model before importing Hebrew audio.',
+      });
+      return;
+    }
 
     await startImport(
       fileInfo.path,
@@ -292,6 +295,7 @@ export function ImportAudioDialog({
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Meeting Title</label>
                     <Input
+                      dir="auto"
                       value={title}
                       onChange={(e) => {
                         setTitle(e.target.value);
@@ -369,7 +373,9 @@ export function ImportAudioDialog({
                             <span className="text-sm font-medium">Language</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Language selection isn't supported for Parakeet. It always uses automatic detection.
+                            {selectedLanguageNeedsWhisper
+                              ? 'The bundled Parakeet model cannot transcribe Hebrew. Choose a Local Whisper model below.'
+                              : 'Parakeet uses automatic language detection.'}
                           </p>
                         </div>
                       )}

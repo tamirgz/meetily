@@ -8,6 +8,7 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import { toast } from 'sonner';
+import { languageRequiresWhisper } from '@/constants/languages';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -34,8 +35,11 @@ export function useRecordingStart(
 
   const { clearTranscripts, setMeetingTitle } = useTranscripts();
   const { setIsMeetingActive } = useSidebar();
-  const { selectedDevices } = useConfig();
+  const { selectedDevices, selectedLanguage, transcriptModelConfig } = useConfig();
   const { setStatus } = useRecordingState();
+  const hasLanguageProviderMismatch =
+    transcriptModelConfig.provider !== 'localWhisper' &&
+    languageRequiresWhisper(selectedLanguage);
 
   // Generate meeting title with timestamp
   const generateMeetingTitle = useCallback(() => {
@@ -64,7 +68,10 @@ export function useRecordingStart(
   // Check if any model is currently downloading
   const checkIfModelDownloading = useCallback(async (): Promise<boolean> => {
     try {
-      const models = await invoke<any[]>('parakeet_get_available_models');
+      const command = transcriptModelConfig.provider === 'localWhisper'
+        ? 'whisper_get_available_models'
+        : 'parakeet_get_available_models';
+      const models = await invoke<any[]>(command);
       const isDownloading = models.some(m =>
         m.status && (
           typeof m.status === 'object'
@@ -77,16 +84,53 @@ export function useRecordingStart(
       console.error('Failed to check model download status:', error);
       return false; // Default to not downloading (will show error + modal)
     }
-  }, []);
+  }, [transcriptModelConfig.provider]);
+
+  // Validate the engine selected by the user. Hebrew is not part of the
+  // bundled Parakeet model's language set, so fail before opening audio
+  // devices and point the user at the correct model settings.
+  const validateConfiguredTranscription = useCallback(async (): Promise<boolean> => {
+    if (hasLanguageProviderMismatch) {
+      toast.error('Local Whisper is required for the selected language', {
+        description: 'For Hebrew, open Transcription settings, choose Local Whisper, and download a multilingual model such as large-v3-turbo.',
+        duration: 7000,
+      });
+      showModal?.('modelSelector', 'The selected transcription language requires Local Whisper');
+      Analytics.trackButtonClick('start_recording_blocked_language_provider', 'home_page');
+      return false;
+    }
+
+    if (transcriptModelConfig.provider === 'localWhisper') {
+      try {
+        await invoke('whisper_init');
+        return await invoke<boolean>('whisper_has_available_models');
+      } catch (error) {
+        console.error('Failed to check Whisper status:', error);
+        return false;
+      }
+    }
+
+    return checkParakeetReady();
+  }, [
+    checkParakeetReady,
+    hasLanguageProviderMismatch,
+    selectedLanguage,
+    showModal,
+    transcriptModelConfig.provider,
+  ]);
 
   // Handle manual recording start (from button click)
   const handleRecordingStart = useCallback(async () => {
     try {
-      console.log('handleRecordingStart called - checking Parakeet model status');
+      console.log('handleRecordingStart called - checking configured transcription model status');
 
-      // Check if Parakeet transcription model is ready before starting
-      const parakeetReady = await checkParakeetReady();
-      if (!parakeetReady) {
+      // Check the configured transcription engine before starting.
+      const transcriptionReady = await validateConfiguredTranscription();
+      if (!transcriptionReady) {
+        if (hasLanguageProviderMismatch) {
+          setStatus(RecordingStatus.IDLE);
+          return;
+        }
         const isDownloading = await checkIfModelDownloading();
         if (isDownloading) {
           toast.info('Model download in progress', {
@@ -106,7 +150,7 @@ export function useRecordingStart(
         return;
       }
 
-      console.log('Parakeet ready - setting up meeting title and state');
+      console.log('Transcription model ready - setting up meeting title and state');
 
       const randomTitle = generateMeetingTitle();
       setMeetingTitle(randomTitle);
@@ -141,7 +185,7 @@ export function useRecordingStart(
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkParakeetReady, checkIfModelDownloading, selectedDevices, showModal, setStatus]);
+  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, validateConfiguredTranscription, hasLanguageProviderMismatch, checkIfModelDownloading, selectedDevices, showModal, setStatus]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -153,9 +197,14 @@ export function useRecordingStart(
           setIsAutoStarting(true);
           sessionStorage.removeItem('autoStartRecording'); // Clear the flag
 
-          // Check if Parakeet transcription model is ready before starting
-          const parakeetReady = await checkParakeetReady();
-          if (!parakeetReady) {
+          // Check if the configured transcription model is ready before starting.
+          const transcriptionReady = await validateConfiguredTranscription();
+          if (!transcriptionReady) {
+            if (hasLanguageProviderMismatch) {
+              setStatus(RecordingStatus.IDLE);
+              setIsAutoStarting(false);
+              return;
+            }
             const isDownloading = await checkIfModelDownloading();
             if (isDownloading) {
               toast.info('Model download in progress', {
@@ -224,7 +273,8 @@ export function useRecordingStart(
     setIsRecording,
     clearTranscripts,
     setIsMeetingActive,
-    checkParakeetReady,
+    validateConfiguredTranscription,
+    hasLanguageProviderMismatch,
     checkIfModelDownloading,
     showModal,
     setStatus,

@@ -19,14 +19,16 @@ export interface TranscriptSettingsProps {
     transcriptModelConfig: TranscriptModelProps;
     setTranscriptModelConfig: (config: TranscriptModelProps) => void;
     onModelSelect?: () => void;
+    selectedLanguage?: string;
 }
 
-export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelConfig, onModelSelect }: TranscriptSettingsProps) {
+export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelConfig, onModelSelect, selectedLanguage }: TranscriptSettingsProps) {
     const [apiKey, setApiKey] = useState<string | null>(transcriptModelConfig.apiKey || null);
     const [showApiKey, setShowApiKey] = useState<boolean>(false);
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
     const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
+    const isHebrewMeeting = selectedLanguage === 'he';
 
     // Sync uiProvider when backend config changes (e.g., after model selection or initial load)
     useEffect(() => {
@@ -121,7 +123,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectValue placeholder="Select provider" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
+                                    <SelectItem value="parakeet" disabled={isHebrewMeeting}>
+                                        ⚡ Parakeet {isHebrewMeeting ? '(Hebrew not supported)' : '(Recommended - Real-time / Accurate)'}
+                                    </SelectItem>
                                     <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
                                     {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
@@ -159,6 +163,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 onModelSelect={handleWhisperModelSelect}
                                 autoSave={true}
                             />
+                        </div>
+                    )}
+
+                    {isHebrewMeeting && uiProvider !== 'localWhisper' && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            Hebrew transcription requires Local Whisper. Select it above and download a multilingual model such as large-v3-turbo.
                         </div>
                     )}
 
@@ -224,7 +234,6 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         </div >
     )
 }
-
 
 
 

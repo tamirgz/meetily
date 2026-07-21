@@ -20,7 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { useConfig } from '@/contexts/ConfigContext';
-import { LANGUAGES } from '@/constants/languages';
+import { LANGUAGES, languageRequiresWhisper } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 import Analytics from '@/lib/analytics';
 
@@ -93,12 +93,8 @@ export function RetranscribeDialog({
     return availableModels.find(m => m.provider === provider && m.name === name);
   }, [selectedModelKey, availableModels]);
   const isParakeetModel = selectedModelDetails?.provider === 'parakeet';
-
-  useEffect(() => {
-    if (isParakeetModel && selectedLang !== 'auto') {
-      setSelectedLang('auto');
-    }
-  }, [isParakeetModel, selectedLang]);
+  const selectedLanguageNeedsWhisper =
+    isParakeetModel && languageRequiresWhisper(selectedLang);
 
   // Reset state only when dialog transitions from closed to open
   // This prevents re-initialization when config changes while dialog is already open
@@ -199,6 +195,11 @@ export function RetranscribeDialog({
   const handleStartRetranscription = async () => {
     if (!meetingFolderPath) {
       setError('Meeting folder path not available');
+      return;
+    }
+
+    if (selectedLanguageNeedsWhisper) {
+      setError('Hebrew retranscription requires a Local Whisper model.');
       return;
     }
 
@@ -330,7 +331,9 @@ export function RetranscribeDialog({
                   <span className="text-sm font-medium">Language</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Language selection isn't supported for Parakeet. It always uses automatic detection.
+                  {selectedLanguageNeedsWhisper
+                    ? 'The bundled Parakeet model cannot transcribe Hebrew. Choose a Local Whisper model below.'
+                    : 'Parakeet uses automatic language detection.'}
                 </p>
               </div>
             )
@@ -396,7 +399,7 @@ export function RetranscribeDialog({
               <Button
                 onClick={handleStartRetranscription}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!meetingFolderPath}
+                disabled={!meetingFolderPath || selectedLanguageNeedsWhisper}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Start Retranscription

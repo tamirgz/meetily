@@ -38,3 +38,24 @@ export const LANGUAGES = [
   { code: 'bg', name: 'Bulgarian' },
   { code: 'lt', name: 'Lithuanian' },
 ];
+
+/**
+ * Languages supported by the bundled Parakeet TDT 0.6B v3 model.
+ *
+ * Parakeet detects these languages automatically and does not accept a
+ * language hint. Hebrew is intentionally absent: Hebrew meetings must use a
+ * multilingual Whisper model.
+ */
+export const PARAKEET_SUPPORTED_LANGUAGE_CODES: ReadonlySet<string> = new Set([
+  'bg', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr', 'de', 'el', 'hu',
+  'it', 'lv', 'lt', 'mt', 'pl', 'pt', 'ro', 'sk', 'sl', 'es', 'sv', 'ru',
+  'uk',
+]);
+
+export function isParakeetLanguageSupported(languageCode: string): boolean {
+  return languageCode === 'auto' || PARAKEET_SUPPORTED_LANGUAGE_CODES.has(languageCode);
+}
+
+export function languageRequiresWhisper(languageCode: string): boolean {
+  return languageCode === 'auto-translate' || !isParakeetLanguageSupported(languageCode);
+}

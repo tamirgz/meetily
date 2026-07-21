@@ -406,7 +406,7 @@ export function SummaryPanel({
               {summaryResponse.raw_summary ? (
                 <div className="mt-4">
                   <h4 className="font-medium mb-1">Full Summary</h4>
-                  <p className="text-sm whitespace-pre-wrap">{summaryResponse.raw_summary}</p>
+                  <p dir="auto" className="bidi-content text-sm whitespace-pre-wrap">{summaryResponse.raw_summary}</p>
                 </div>
               ) : null}
             </div>

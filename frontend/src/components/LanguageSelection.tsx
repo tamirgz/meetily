@@ -3,6 +3,7 @@ import { Globe } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
 import { useConfig } from '@/contexts/ConfigContext';
+import { languageRequiresWhisper } from '@/constants/languages';
 
 export interface Language {
   code: string;
@@ -132,9 +133,10 @@ export function LanguageSelection({
 
   // Parakeet only supports auto-detection (doesn't support manual language selection)
   const isParakeet = provider === 'parakeet';
-  const availableLanguages = isParakeet
-    ? LANGUAGES.filter(lang => lang.code === 'auto' || lang.code === 'auto-translate')
-    : LANGUAGES;
+  // Keep the complete list visible so users can persist their intended meeting
+  // language before switching engines. Recording validation prevents an
+  // unsupported language/engine combination from starting.
+  const availableLanguages = LANGUAGES;
 
   const handleLanguageChange = async (languageCode: string) => {
     setSaving(true);
@@ -172,6 +174,8 @@ export function LanguageSelection({
   const selectedLanguageName = LANGUAGES.find(
     lang => lang.code === selectedLanguage
   )?.name || 'Auto Detect (Original Language)';
+  const selectedLanguageNeedsWhisper =
+    isParakeet && languageRequiresWhisper(selectedLanguage);
 
   return (
     <div className="space-y-4">
@@ -199,9 +203,17 @@ export function LanguageSelection({
 
         {/* Parakeet language limitation warning */}
         {isParakeet && (
-          <div className="p-2 bg-amber-50 border border-amber-200 rounded text-amber-800">
-            <p className="font-medium">ℹ️ Parakeet Language Support</p>
-            <p className="mt-1 text-xs">Parakeet currently only supports automatic language detection. Manual language selection is not available. Use Whisper if you need to specify a particular language.</p>
+          <div className={`p-2 border rounded ${selectedLanguageNeedsWhisper
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+            <p className="font-medium">
+              {selectedLanguageNeedsWhisper ? 'Selected language requires Local Whisper' : 'ℹ️ Parakeet Language Support'}
+            </p>
+            <p className="mt-1 text-xs">
+              {selectedLanguageNeedsWhisper
+                ? `The bundled Parakeet model does not support ${selectedLanguageName}. Choose Local Whisper in Transcription settings before recording.`
+                : 'Parakeet detects supported languages automatically. Manual language hints are available with Local Whisper.'}
+            </p>
           </div>
         )}
 

@@ -180,6 +180,15 @@ mod tests {
     }
 
     #[test]
+    fn transcript_summary_language_detects_hebrew() {
+        let texts = strings(&[
+            "הצוות דן בתוכנית העבודה, בסיכונים לקראת ההשקה ובמשימות ההמשך, ולאחר מכן קבע אחראים ולוחות זמנים.",
+        ]);
+
+        assert_eq!(detect_summary_language(&texts).language, Some("he".to_string()));
+    }
+
+    #[test]
     fn transcript_summary_language_uses_weighted_dominant_language() {
         let texts = strings(&[
             "团队讨论了产品路线图、发布风险以及下一阶段的工程计划，并确认了后续负责人。",

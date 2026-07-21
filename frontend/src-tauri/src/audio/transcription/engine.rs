@@ -86,6 +86,18 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
         }
     };
 
+    // The bundled Parakeet TDT 0.6B v3 model does not include Hebrew. Keep
+    // this guard in the native layer as well as the UI so tray starts and
+    // future clients cannot silently create unusable Hebrew transcripts.
+    if config.provider == "parakeet"
+        && matches!(crate::get_language_preference_internal().as_deref(), Some("he"))
+    {
+        return Err(
+            "Hebrew transcription requires Local Whisper. Select a multilingual Whisper model in Transcription settings."
+                .to_string(),
+        );
+    }
+
     // Validate based on provider
     match config.provider.as_str() {
         "localWhisper" => {

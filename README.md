@@ -100,6 +100,7 @@ Whether you're a defense consultant, enterprise executive, legal professional, o
 - **Multi-Platform:** Works on macOS, Windows, and Linux.
 - **Open Source:** Meetily is open source and free to use.
 - **Flexible AI Provider Support:** Choose from Ollama (local), Claude, Groq, OpenRouter, or use your own OpenAI-compatible endpoint.
+- **Hebrew Meeting Content:** Transcribe, summarize, edit, and export Hebrew and mixed Hebrew/English meetings with bidirectional text support. See [Hebrew meeting support](docs/HEBREW_SUPPORT.md).
 
 ## Installation
 

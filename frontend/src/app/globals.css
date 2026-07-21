@@ -207,6 +207,24 @@
     max-width: none !important;
   }
 
+  /* Mixed Hebrew/English content follows the first strong character in each
+     paragraph while controls and timestamps keep the app's LTR layout. */
+  .bidi-content {
+    text-align: start;
+    unicode-bidi: plaintext;
+  }
+
+  .bidi-editor .bn-block-content,
+  .bidi-editor [data-content-type],
+  .bidi-editor .ProseMirror p,
+  .bidi-editor .ProseMirror h1,
+  .bidi-editor .ProseMirror h2,
+  .bidi-editor .ProseMirror h3,
+  .bidi-editor .ProseMirror li {
+    text-align: start;
+    unicode-bidi: plaintext;
+  }
+
   /* Disable scrolling on any BlockNote wrapper elements */
   [data-node-type] {
     overflow: visible !important;

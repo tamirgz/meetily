@@ -14,6 +14,8 @@ static THINKING_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 const ENGLISH_BASE_SUMMARY_INSTRUCTION: &str =
     "**Write the summary/report in English regardless of transcript language; non-English prose is invalid.**";
+const SOURCE_NAME_FIDELITY_INSTRUCTION: &str =
+    "Preserve names, organizations, product names, and technical terms in their original script exactly as they appear in the source.";
 
 fn resolve_cached_english<'a>(
     cached: Option<&'a str>,
@@ -37,11 +39,19 @@ fn resolve_final_language_action(
     summary_language: Option<&str>,
     detected_transcript_language: Option<&str>,
 ) -> FinalLanguageAction {
-    match summary_language.and_then(language_name_from_code) {
-        Some(name) if name != "English" => FinalLanguageAction::Translate(name),
-        _ => match detected_transcript_language.and_then(language_name_from_code) {
-            Some("English") => FinalLanguageAction::ReturnEnglish,
+    match summary_language {
+        Some(code) => match language_name_from_code(code) {
+            Some(name) if name != "English" => FinalLanguageAction::Translate(name),
+            Some("English") => match detected_transcript_language.and_then(language_name_from_code) {
+                Some("English") => FinalLanguageAction::ReturnEnglish,
+                _ => FinalLanguageAction::NormalizeEnglish,
+            },
             _ => FinalLanguageAction::NormalizeEnglish,
+        },
+        None => match detected_transcript_language.and_then(language_name_from_code) {
+            Some("English") => FinalLanguageAction::ReturnEnglish,
+            Some(name) => FinalLanguageAction::Translate(name),
+            None => FinalLanguageAction::NormalizeEnglish,
         },
     }
 }
@@ -122,6 +132,15 @@ pub(crate) fn language_name_from_code(code: &str) -> Option<&'static str> {
 }
 
 fn translation_system_prompt(target_language: &str) -> String {
+    let language_specific_rules = match target_language {
+        "Hebrew" => r#"
+6. Use natural, modern Hebrew suitable for professional meeting notes.
+7. Preserve Hebrew names exactly as written; do not transliterate them through English.
+8. Keep established English technical terms readable inside Hebrew sentences.
+9. Do not insert Unicode bidirectional control characters; the renderer handles RTL layout."#,
+        _ => "",
+    };
+
     format!(
         r#"You are a precise translator. Translate the provided Markdown document into {target_language} while preserving structure exactly.
 
@@ -130,19 +149,19 @@ fn translation_system_prompt(target_language: &str) -> String {
 2. Preserve the Markdown structure EXACTLY: keep every `#`, `**`, `-`, `|`, code fence marker, and table pipe in the same position.
 3. Do NOT translate: proper nouns (names of people, products, companies), code identifiers, file paths, URLs, numeric values, or text inside backticks.
 4. Do not add commentary or explanation. Output ONLY the translated Markdown.
-5. If a technical term has no standard translation, keep the original English word."#
+5. If a technical term has no standard translation, keep the original English word.{language_specific_rules}"#
     )
 }
 
 fn build_chunk_summary_user_prompt(chunk: &str) -> String {
     format!(
-        "{ENGLISH_BASE_SUMMARY_INSTRUCTION}\n\nProvide a concise but comprehensive summary of the following transcript chunk. Capture all key points, decisions, action items, and mentioned individuals.\n\n<transcript_chunk>\n{chunk}\n</transcript_chunk>"
+        "{ENGLISH_BASE_SUMMARY_INSTRUCTION}\n{SOURCE_NAME_FIDELITY_INSTRUCTION}\n\nProvide a concise but comprehensive summary of the following transcript chunk. Capture all key points, decisions, action items, and mentioned individuals.\n\n<transcript_chunk>\n{chunk}\n</transcript_chunk>"
     )
 }
 
 fn build_combine_summary_user_prompt(combined_text: &str) -> String {
     format!(
-        "{ENGLISH_BASE_SUMMARY_INSTRUCTION}\n\nThe following are consecutive summaries of a meeting. Combine them into a single, coherent, and detailed narrative summary that retains all important details, organized logically.\n\n<summaries>\n{combined_text}\n</summaries>"
+        "{ENGLISH_BASE_SUMMARY_INSTRUCTION}\n{SOURCE_NAME_FIDELITY_INSTRUCTION}\n\nThe following are consecutive summaries of a meeting. Combine them into a single, coherent, and detailed narrative summary that retains all important details, organized logically.\n\n<summaries>\n{combined_text}\n</summaries>"
     )
 }
 
@@ -161,6 +180,7 @@ fn build_final_report_system_prompt(
 5. If a section has no relevant info, write "None noted in this section."
 6. Output **only** the completed Markdown report.
 7. If unsure about something, omit it.
+8. {SOURCE_NAME_FIDELITY_INSTRUCTION}
 
 **SECTION-SPECIFIC INSTRUCTIONS:**
 {section_instructions}
@@ -769,6 +789,23 @@ mod tests {
             resolve_final_language_action(Some("fr"), Some("ja")),
             FinalLanguageAction::Translate("French")
         );
+    }
+
+    #[test]
+    fn auto_target_uses_detected_hebrew_language() {
+        assert_eq!(
+            resolve_final_language_action(None, Some("he")),
+            FinalLanguageAction::Translate("Hebrew")
+        );
+    }
+
+    #[test]
+    fn hebrew_translation_prompt_preserves_rtl_content_fidelity() {
+        let prompt = translation_system_prompt("Hebrew");
+
+        assert!(prompt.contains("natural, modern Hebrew"));
+        assert!(prompt.contains("Preserve Hebrew names exactly as written"));
+        assert!(prompt.contains("bidirectional control characters"));
     }
 
     #[test]
