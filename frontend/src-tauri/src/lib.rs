@@ -68,6 +68,8 @@ static RECORDING_FLAG: AtomicBool = AtomicBool::new(false);
 // Translation to English must always be an explicit user choice.
 static LANGUAGE_PREFERENCE: std::sync::LazyLock<StdMutex<String>> =
     std::sync::LazyLock::new(|| StdMutex::new("auto".to_string()));
+static TRANSCRIPTION_VOCABULARY: std::sync::LazyLock<StdMutex<String>> =
+    std::sync::LazyLock::new(|| StdMutex::new(String::new()));
 
 #[derive(Debug, Deserialize)]
 struct RecordingArgs {
@@ -386,6 +388,27 @@ async fn set_language_preference(language: String) -> Result<(), String> {
 // Internal helper function to get language preference (for use within Rust code)
 pub fn get_language_preference_internal() -> Option<String> {
     LANGUAGE_PREFERENCE.lock().ok().map(|lang| lang.clone())
+}
+
+#[tauri::command]
+async fn set_transcription_vocabulary(vocabulary: String) -> Result<(), String> {
+    set_transcription_vocabulary_internal(vocabulary)
+}
+
+pub fn set_transcription_vocabulary_internal(vocabulary: String) -> Result<(), String> {
+    let mut stored = TRANSCRIPTION_VOCABULARY
+        .lock()
+        .map_err(|_| "Failed to lock transcription vocabulary".to_string())?;
+    *stored = vocabulary.trim().chars().take(800).collect();
+    Ok(())
+}
+
+pub fn get_transcription_vocabulary_internal() -> Option<String> {
+    TRANSCRIPTION_VOCABULARY
+        .lock()
+        .ok()
+        .map(|vocabulary| vocabulary.trim().to_string())
+        .filter(|vocabulary| !vocabulary.is_empty())
 }
 
 fn initialize_onnx_runtime<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
@@ -752,6 +775,7 @@ pub fn run() {
             audio::recording_preferences::get_audio_backend_info,
             // Language preference commands
             set_language_preference,
+            set_transcription_vocabulary,
             // Notification system commands
             notifications::commands::get_notification_settings,
             notifications::commands::set_notification_settings,

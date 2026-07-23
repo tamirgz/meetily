@@ -10,5 +10,10 @@
     <true/>
     <key>com.apple.security.device.screen-capture</key>
     <true/>
+    <!-- Required for local/ad-hoc builds to load the bundled and separately
+         signed ONNX Runtime library. Developer ID release builds should omit
+         this entitlement and sign all nested code with the same identity. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>

@@ -13,6 +13,10 @@ use tokio::io::AsyncWriteExt;
 use crate::config::WHISPER_MODEL_CATALOG;
 use super::acceleration::{whisper_context_acceleration_for, WhisperCompiledBackend};
 
+const HEBREW_TRANSCRIPTION_PROMPT: &str =
+    "תמלול פגישה מקצועית בעברית, עם פיסוק טבעי. שמות אנשים, מספרים, חברות ומונחים טכניים באנגלית נשמרים כפי שנאמרו.";
+const MAX_PREVIOUS_CONTEXT_CHARS: usize = 600;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelStatus {
     Available,
@@ -512,8 +516,53 @@ impl WhisperEngine {
         repeated_words as f32 / total_words
     }
     
-    /// Transcribe audio with streaming support for partial results and adaptive quality
-    pub async fn transcribe_audio_with_confidence(&self, audio_data: Vec<f32>, language: Option<String>) -> Result<(String, f32, bool)> {
+    fn build_initial_prompt(language: Option<&str>, previous_context: Option<&str>) -> Option<String> {
+        if language != Some("he") {
+            return None;
+        }
+
+        let mut prompt = HEBREW_TRANSCRIPTION_PROMPT.to_string();
+        if let Some(vocabulary) = crate::get_transcription_vocabulary_internal() {
+            prompt.push_str("\nאיות מועדף לשמות ולמונחים: ");
+            prompt.push_str(&vocabulary);
+        }
+        if let Some(previous) = previous_context {
+            let previous = previous.trim();
+            if !previous.is_empty() {
+                // Initial prompts have a finite token budget. Keep the most recent
+                // context because it is most useful for a continuing conversation.
+                let chars: Vec<char> = previous.chars().collect();
+                let start = chars.len().saturating_sub(MAX_PREVIOUS_CONTEXT_CHARS);
+                let recent: String = chars[start..].iter().collect();
+                prompt.push_str("\nהמשך של התמלול הקודם: ");
+                prompt.push_str(&recent);
+            }
+        }
+
+        Some(prompt)
+    }
+
+    /// Transcribe audio with streaming support for partial results and adaptive quality.
+    pub async fn transcribe_audio_with_confidence(
+        &self,
+        audio_data: Vec<f32>,
+        language: Option<String>,
+    ) -> Result<(String, f32, bool)> {
+        self.transcribe_audio_with_confidence_and_context(audio_data, language, None)
+            .await
+    }
+
+    /// Transcribe audio while priming Hebrew decoding with the preceding segment.
+    ///
+    /// Import and retranscription process independent VAD segments, so whisper.cpp
+    /// cannot otherwise carry names, code-switched English, or sentence context
+    /// from one segment to the next.
+    pub async fn transcribe_audio_with_confidence_and_context(
+        &self,
+        audio_data: Vec<f32>,
+        language: Option<String>,
+        previous_context: Option<&str>,
+    ) -> Result<(String, f32, bool)> {
         let ctx_lock = self.current_context.read().await;
         let ctx = ctx_lock.as_ref()
             .ok_or_else(|| anyhow!("No model loaded. Please load a model first."))?;
@@ -539,6 +588,11 @@ impl WhisperEngine {
         };
         params.set_language(language_code);
         params.set_translate(should_translate);
+        params.set_no_context(false);
+        let initial_prompt = Self::build_initial_prompt(language.as_deref(), previous_context);
+        if let Some(prompt) = initial_prompt.as_deref() {
+            params.set_initial_prompt(prompt);
+        }
 
         // CRITICAL: Disable timestamp tokens to prevent whisper.cpp chunking heuristics
         // The "single timestamp ending - skip entire chunk" optimization incorrectly discards
@@ -556,7 +610,10 @@ impl WhisperEngine {
         // Additional suppression to reduce C library verbosity
         params.set_suppress_blank(true);
         params.set_suppress_non_speech_tokens(true);
-        params.set_temperature(adaptive_config.temperature);
+        // Start deterministically and let whisper.cpp increase temperature only
+        // when its repetition/log-probability checks reject a decode.
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.2);
         params.set_max_initial_ts(1.0);
         params.set_entropy_thold(2.4);
         params.set_logprob_thold(-1.0);
@@ -656,6 +713,10 @@ impl WhisperEngine {
         };
         params.set_language(language_code);
         params.set_translate(should_translate);
+        params.set_no_context(false);
+        if language.as_deref() == Some("he") {
+            params.set_initial_prompt(HEBREW_TRANSCRIPTION_PROMPT);
+        }
 
         // CRITICAL: Disable timestamp tokens to prevent whisper.cpp chunking heuristics
         // The "single timestamp ending - skip entire chunk" optimization incorrectly discards
@@ -671,7 +732,8 @@ impl WhisperEngine {
         // BALANCED settings - good quality with reasonable speed
         params.set_suppress_blank(true);
         params.set_suppress_non_speech_tokens(true);
-        params.set_temperature(0.3);             // Lower than 0.4 for consistency, higher than 0.0 for quality
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.2);
         params.set_max_initial_ts(1.0);
         params.set_entropy_thold(2.4);
         params.set_logprob_thold(-1.0);
@@ -918,8 +980,13 @@ impl WhisperEngine {
             *cancel_flag = None;
         }
 
-        // Official ggerganov/whisper.cpp model URLs from Hugging Face
+        // GGML model URLs from Hugging Face. The Hebrew models are published by
+        // Ivrit.AI and the multilingual models by the whisper.cpp project.
         let model_url = match model_name {
+            // Hebrew-specialized f16 models
+            "hebrew-large-v3" => "https://huggingface.co/ivrit-ai/whisper-large-v3-ggml/resolve/main/ggml-model.bin",
+            "hebrew-large-v3-turbo" => "https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml/resolve/main/ggml-model.bin",
+
             // Standard f16 models
             "tiny" => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
             "base" => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
@@ -943,9 +1010,14 @@ impl WhisperEngine {
         
         log::info!("Model URL for {}: {}", model_name, model_url);
         
-        // Generate correct filename - all models follow ggml-{model_name}.bin pattern
-        let filename = format!("ggml-{}.bin", model_name);
-        let file_path = self.models_dir.join(&filename);
+        // Use the catalog filename so third-party models do not have to follow
+        // the upstream whisper.cpp repository's naming convention.
+        let filename = WHISPER_MODEL_CATALOG
+            .iter()
+            .find(|(name, ..)| *name == model_name)
+            .map(|(_, filename, ..)| *filename)
+            .ok_or_else(|| anyhow!("Unsupported model: {}", model_name))?;
+        let file_path = self.models_dir.join(filename);
         
         log::info!("Downloading to file path: {}", file_path.display());
         

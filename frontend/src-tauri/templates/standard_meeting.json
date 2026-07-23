@@ -1,27 +1,43 @@
 {
   "name": "Standard Meeting Notes",
-  "description": "A standard template for general meetings, focusing on key outcomes and actions.",
+  "description": "Participant-ready meeting minutes with complete outcomes, follow-up, and accountability.",
   "sections": [
     {
-      "title": "Summary",
-      "instruction": "Provide a brief, one-paragraph executive summary of the entire meeting.",
+      "title": "General Summary",
+      "instruction": "Write a concise 3-6 sentence overview covering the purpose, major outcomes, and current state. It must make sense to a participant who did not attend.",
       "format": "paragraph"
     },
     {
-      "title": "Key Decisions",
-      "instruction": "List the most important decisions made during the meeting.",
+      "title": "Key Points",
+      "instruction": "List every material topic, finding, constraint, update, concern, and insight discussed. Group related points and retain important numbers, dates, names, and context.",
+      "format": "list"
+    },
+    {
+      "title": "Decisions",
+      "instruction": "List only decisions that were actually made or explicitly confirmed. Include rationale when stated. Keep proposals and unresolved options out of this section.",
+      "format": "list"
+    },
+    {
+      "title": "Next Steps",
+      "instruction": "List the agreed sequence of follow-up activities and any necessary but unassigned follow-ups. Make dependencies and ordering explicit when the source supports them.",
       "format": "list"
     },
     {
       "title": "Action Items",
-      "instruction": "List all assigned tasks with their owners and due date. Always add reference transcript segment and timestamp in the table.",
+      "instruction": "Create one row per explicit commitment or assigned task. Preserve the exact owner, due date, and status when stated. Use 'Not assigned' or 'Not specified' instead of guessing. Do not promote suggestions into commitments.",
       "format": "list",
-      "item_format": "| **Owner** | Task | Due | Reference Transcript Segment | Segment Time stamp |\n| --- | --- | --- | --- | --- |"
+      "item_format": "| **Owner** | **Action** | **Due Date** | **Status** |\n| --- | --- | --- | --- |"
     },
     {
-      "title": "Discussion Highlights",
-      "instruction": "Summarize the main topics of discussion, key arguments, and important insights.",
-      "format": "paragraph"
+      "title": "Open Questions, Blockers & Risks",
+      "instruction": "List unresolved questions, disagreements, blockers, risks, and dependencies. Include the responsible person or mitigation only when explicitly stated.",
+      "format": "list"
+    },
+    {
+      "title": "Links & Resources",
+      "instruction": "List documents, tickets, dashboards, designs, or other resources mentioned. Include only exact URLs present in the source; never invent or search for a URL. If a resource was named without a URL, label it 'Link not provided'.",
+      "format": "list",
+      "item_format": "| **Resource** | **URL / Reference** | **Context** |\n| --- | --- | --- |"
     }
   ]
 }

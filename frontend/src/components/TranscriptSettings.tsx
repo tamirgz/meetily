@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
+import { Textarea } from './ui/textarea';
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
@@ -28,6 +29,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
     const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
+    const [transcriptionVocabulary, setTranscriptionVocabulary] = useState('');
     const isHebrewMeeting = selectedLanguage === 'he';
 
     // Sync uiProvider when backend config changes (e.g., after model selection or initial load)
@@ -40,6 +42,22 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             setApiKey(null);
         }
     }, [transcriptModelConfig.provider]);
+
+    useEffect(() => {
+        const savedVocabulary = localStorage.getItem('transcriptionVocabulary') || '';
+        setTranscriptionVocabulary(savedVocabulary);
+        invoke('set_transcription_vocabulary', { vocabulary: savedVocabulary }).catch(err =>
+            console.error('Failed to sync transcription vocabulary to Rust:', err)
+        );
+    }, []);
+
+    const saveTranscriptionVocabulary = () => {
+        const normalized = transcriptionVocabulary.trim();
+        localStorage.setItem('transcriptionVocabulary', normalized);
+        invoke('set_transcription_vocabulary', { vocabulary: normalized }).catch(err =>
+            console.error('Failed to save transcription vocabulary:', err)
+        );
+    };
 
     const fetchApiKey = async (provider: string) => {
         try {
@@ -157,18 +175,35 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     </div>
 
                     {uiProvider === 'localWhisper' && (
-                        <div className="mt-6">
+                        <div className="mt-6 space-y-5">
                             <ModelManager
                                 selectedModel={transcriptModelConfig.provider === 'localWhisper' ? transcriptModelConfig.model : undefined}
                                 onModelSelect={handleWhisperModelSelect}
                                 autoSave={true}
                             />
+                            <div>
+                                <Label htmlFor="transcription-vocabulary" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Meeting vocabulary
+                                </Label>
+                                <Textarea
+                                    id="transcription-vocabulary"
+                                    value={transcriptionVocabulary}
+                                    maxLength={800}
+                                    rows={3}
+                                    onChange={(event) => setTranscriptionVocabulary(event.target.value)}
+                                    onBlur={saveTranscriptionVocabulary}
+                                    placeholder="Names and technical terms, separated by commas — e.g. Sentinel, CrowdStrike, false positive, SMB"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Helps Whisper preserve names, companies, acronyms, and English terms. Stored only on this Mac.
+                                </p>
+                            </div>
                         </div>
                     )}
 
                     {isHebrewMeeting && uiProvider !== 'localWhisper' && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                            Hebrew transcription requires Local Whisper. Select it above and download a multilingual model such as large-v3-turbo.
+                            Hebrew transcription requires Local Whisper. For best results, download Hebrew Large V3 (Ivrit.AI) and select Hebrew as the language.
                         </div>
                     )}
 
@@ -234,8 +269,6 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
         </div >
     )
 }
-
-
 
 
 

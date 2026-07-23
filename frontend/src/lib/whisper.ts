@@ -50,6 +50,19 @@ export interface TranscribeAudioRequest {
 
 // Model configuration for different use cases
 export const MODEL_CONFIGS: Record<string, Partial<ModelInfo>> = {
+  'hebrew-large-v3': {
+    description: 'Highest Hebrew accuracy. Fine-tuned by Ivrit.AI for Hebrew speech and meetings.',
+    size_mb: 2951,
+    accuracy: 'High',
+    speed: 'Slow'
+  },
+  'hebrew-large-v3-turbo': {
+    description: 'Hebrew-specialized transcription with much faster processing.',
+    size_mb: 1549,
+    accuracy: 'High',
+    speed: 'Medium'
+  },
+
   // Standard f16 models (full precision)
   'large-v3': {
     description: 'Highest accuracy, best for important meetings. Slower processing.',
@@ -213,7 +226,11 @@ export function getModelTagline(modelName: string, speed: ProcessingSpeed, accur
 
   // Key feature based on model and accuracy
   let featureText = '';
-  if (baseName === 'large-v3') {
+  if (baseName === 'hebrew-large-v3') {
+    featureText = 'Best Hebrew accuracy';
+  } else if (baseName === 'hebrew-large-v3-turbo') {
+    featureText = 'Hebrew optimized';
+  } else if (baseName === 'large-v3') {
     featureText = 'Most accurate';
   } else if (baseName === 'large-v3-turbo') {
     featureText = 'Best accuracy with speed';

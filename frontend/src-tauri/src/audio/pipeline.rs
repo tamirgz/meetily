@@ -722,9 +722,12 @@ impl AudioPipeline {
         // Create VAD processor with balanced redemption time for speech accumulation
         // The VAD processor now handles 48kHz->16kHz resampling internally
         // This bridges natural pauses without excessive fragmentation
-        // For mac os core audio, 900ms, for windows 400ms seems good
-
-        let redemption_time = if cfg!(target_os = "macos") { 400 } else { 400 };
+        // Whisper is substantially more accurate when it receives complete
+        // phrases instead of fragments cut at every short hesitation. Hebrew
+        // speakers commonly pause inside a sentence, so allow a longer pause
+        // on macOS while keeping live latency bounded. Batch transcription
+        // continues to use the more conservative 2000ms value.
+        let redemption_time = if cfg!(target_os = "macos") { 1200 } else { 800 };
 
         let vad_processor = match ContinuousVadProcessor::new(sample_rate, redemption_time) {
             Ok(processor) => {

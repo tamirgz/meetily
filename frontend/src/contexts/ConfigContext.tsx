@@ -224,6 +224,16 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     }
   }, []); 
 
+  // Sync the optional names/technical-terms glossary before any recording starts.
+  useEffect(() => {
+    const vocabulary = typeof window !== 'undefined'
+      ? localStorage.getItem('transcriptionVocabulary') || ''
+      : '';
+    invoke('set_transcription_vocabulary', { vocabulary }).catch(err => {
+      console.error('[ConfigContext] Failed to sync transcription vocabulary:', err);
+    });
+  }, []);
+
   // Load model configuration on mount
   useEffect(() => {
     const fetchModelConfig = async () => {

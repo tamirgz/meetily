@@ -16,6 +16,25 @@ pub const DEFAULT_PARAKEET_MODEL: &str = "parakeet-tdt-0.6b-v3-int8";
 ///
 /// Format: (name, filename, size_mb, accuracy, speed, description)
 pub const WHISPER_MODEL_CATALOG: &[(&str, &str, u32, &str, &str, &str)] = &[
+    // Hebrew-specialized models by Ivrit.AI. These are fine-tuned from Whisper
+    // Large V3 and are directly compatible with whisper.cpp/whisper-rs.
+    (
+        "hebrew-large-v3",
+        "ggml-hebrew-large-v3.bin",
+        2951,
+        "High",
+        "Slow",
+        "Best Hebrew accuracy. Fine-tuned by Ivrit.AI; use with Hebrew language selected",
+    ),
+    (
+        "hebrew-large-v3-turbo",
+        "ggml-hebrew-large-v3-turbo.bin",
+        1549,
+        "High",
+        "Medium",
+        "Faster Hebrew transcription. Fine-tuned by Ivrit.AI; use with Hebrew language selected",
+    ),
+
     // Standard f16 models (full precision)
     ("tiny", "ggml-tiny.bin", 74, "Decent", "Very Fast", "Fastest processing, good for real-time use"),
     ("base", "ggml-base.bin", 142, "Good", "Fast", "Good balance of speed and accuracy"),

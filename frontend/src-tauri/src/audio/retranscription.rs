@@ -338,6 +338,7 @@ async fn run_retranscription<R: Runtime>(
     // Process each speech segment with progress updates
     let mut all_transcripts: Vec<(String, f64, f64)> = Vec::new(); // (text, start_ms, end_ms)
     let mut total_confidence = 0.0f32;
+    let mut previous_whisper_context: Option<String> = None;
 
     for (i, segment) in processable_segments.iter().enumerate() {
         // Check for cancellation before each segment
@@ -378,7 +379,11 @@ async fn run_retranscription<R: Runtime>(
         } else {
             let engine = whisper_engine.as_ref().unwrap();
             let (text, conf, _) = engine
-                .transcribe_audio_with_confidence(segment.samples.clone(), language.clone())
+                .transcribe_audio_with_confidence_and_context(
+                    segment.samples.clone(),
+                    language.clone(),
+                    previous_whisper_context.as_deref(),
+                )
                 .await
                 .map_err(|e| anyhow!("Whisper transcription failed on segment {}: {}", i, e))?;
             (text, conf)
@@ -387,6 +392,9 @@ async fn run_retranscription<R: Runtime>(
         // Skip empty transcripts
         let trimmed = text.trim();
         if !trimmed.is_empty() {
+            if !use_parakeet && language.as_deref() == Some("he") {
+                previous_whisper_context = Some(trimmed.to_string());
+            }
             debug!(
                 "Segment {}/{}: {:.1}s, conf={:.2}, text='{}'",
                 i + 1, processable_count, segment_duration_sec, conf,

@@ -375,6 +375,8 @@ export function ModelManager({
 
   const getDisplayName = (modelName: string): string => {
     const modelNameMapping: { [key: string]: string } = {
+      "hebrew-large-v3": "Hebrew Large V3 (Ivrit.AI)",
+      "hebrew-large-v3-turbo": "Hebrew Large V3 Turbo (Ivrit.AI)",
       "small": "Small",
       "medium-q5_0": "Medium",
       "large-v3-q5_0": "Large V3 Compressed",
@@ -382,7 +384,7 @@ export function ModelManager({
       "large-v3": "Large V3"
     };
 
-    const basicModelNames = ["small", "medium-q5_0", "large-v3-q5_0", "large-v3-turbo", "large-v3"];
+    const basicModelNames = ["hebrew-large-v3", "hebrew-large-v3-turbo", "small", "medium-q5_0", "large-v3-q5_0", "large-v3-turbo", "large-v3"];
     if (basicModelNames.includes(modelName)) {
       return modelNameMapping[modelName] || modelName;
     }
@@ -410,7 +412,7 @@ export function ModelManager({
     );
   }
 
-  const basicModelNames = ["small", "medium-q5_0", "large-v3-q5_0", "large-v3-turbo", "large-v3"];
+  const basicModelNames = ["hebrew-large-v3", "hebrew-large-v3-turbo", "small", "medium-q5_0", "large-v3-q5_0", "large-v3-turbo", "large-v3"];
   const basicModels = models.filter(m => basicModelNames.includes(m.name))
     .sort((a, b) => basicModelNames.indexOf(a.name) - basicModelNames.indexOf(b.name));
   const advancedModels = models.filter(m => !basicModelNames.includes(m.name));
@@ -420,7 +422,7 @@ export function ModelManager({
       {/* Basic Models */}
       <div className="space-y-3">
         {basicModels.map((model) => {
-          const isRecommended = model.name === 'base';
+          const isRecommended = model.name === 'hebrew-large-v3';
           return (
             <ModelCard
               key={model.name}
