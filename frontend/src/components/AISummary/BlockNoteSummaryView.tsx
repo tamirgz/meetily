@@ -8,6 +8,7 @@ import { Block } from '@blocknote/core';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/shadcn';
 import { blocksToMarkdownSafely } from '@/lib/blocknote-markdown';
+import { useBlockNoteBidiDirection } from '@/hooks/useBlockNoteBidiDirection';
 import "@blocknote/shadcn/style.css";
 
 // Dynamically import BlockNote Editor to avoid SSR issues
@@ -80,6 +81,8 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
   const [currentBlocks, setCurrentBlocks] = useState<Block[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const isContentLoaded = useRef(false);
+  const markdownEditorViewRef = useRef<HTMLDivElement>(null);
+  useBlockNoteBidiDirection(markdownEditorViewRef, format === 'markdown');
 
   // Create BlockNote editor for markdown parsing
   const editor = useCreateBlockNote({
@@ -241,10 +244,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
         <div className="w-full">
           <Editor
             initialContent={data.summary_json}
-            onChange={(blocks) => {
-              console.log('📝 Editor blocks changed:', blocks.length);
-              handleEditorChange(blocks);
-            }}
+            onChange={handleEditorChange}
             editable={true}
           />
         </div>
@@ -259,6 +259,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
       <div dir="auto" className="bidi-editor flex flex-col w-full">
         <div className="w-full">
           <BlockNoteView
+            ref={markdownEditorViewRef}
             editor={editor}
             editable={true}
             onChange={() => {

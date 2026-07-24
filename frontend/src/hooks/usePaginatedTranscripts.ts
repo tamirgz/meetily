@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Transcript, MeetingMetadata, PaginatedTranscriptsResponse, TranscriptSegmentData } from "@/types";
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -37,6 +38,7 @@ function convertTranscriptsToSegments(transcripts: Transcript[]): TranscriptSegm
         endTime: t.audio_end_time,
         text: t.text,
         confidence: t.confidence,
+        speaker: t.speaker,
     }));
 }
 
@@ -165,6 +167,23 @@ export function usePaginatedTranscripts({
             setIsLoading(false);
         }
     }, [meetingId, reset, loadMetadata, loadTranscriptsAtOffset]);
+
+    // Automatic diarization starts after a newly recorded meeting is saved.
+    // Refresh the visible transcript when the native Core ML job finishes.
+    useEffect(() => {
+        if (!meetingId) return;
+
+        let unlisten: (() => void) | undefined;
+        void listen<{ meeting_id: string }>('speaker-diarization-complete', event => {
+            if (event.payload.meeting_id === meetingId) {
+                void refetch();
+            }
+        }).then(dispose => {
+            unlisten = dispose;
+        });
+
+        return () => unlisten?.();
+    }, [meetingId, refetch]);
 
     // Initial load
     useEffect(() => {

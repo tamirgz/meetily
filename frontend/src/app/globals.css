@@ -211,18 +211,12 @@
      paragraph while controls and timestamps keep the app's LTR layout. */
   .bidi-content {
     text-align: start;
-    unicode-bidi: plaintext;
   }
 
-  .bidi-editor .bn-block-content,
-  .bidi-editor [data-content-type],
-  .bidi-editor .ProseMirror p,
-  .bidi-editor .ProseMirror h1,
-  .bidi-editor .ProseMirror h2,
-  .bidi-editor .ProseMirror h3,
-  .bidi-editor .ProseMirror li {
+  /* Direction is applied per block with dir="auto". Avoid unicode-bidi:
+     plaintext inside contenteditable because it destabilizes WebKit selection. */
+  .bidi-editor .bn-block-content[data-content-type] {
     text-align: start;
-    unicode-bidi: plaintext;
   }
 
   /* Disable scrolling on any BlockNote wrapper elements */

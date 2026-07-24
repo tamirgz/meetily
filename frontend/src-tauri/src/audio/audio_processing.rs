@@ -1,13 +1,13 @@
 use anyhow::Result;
 use chrono::Utc;
 use log::{debug, info, warn};
+use nnnoiseless::DenoiseState;
 use realfft::num_complex::{Complex32, ComplexFloat};
 use realfft::RealFftPlanner;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 use std::path::PathBuf;
-use nnnoiseless::DenoiseState;
 
 use super::encode::encode_single_audio; // Correct path to encode module
 
@@ -49,9 +49,15 @@ pub fn create_meeting_folder(
     if create_checkpoints_dir {
         let checkpoints_dir = meeting_folder.join(".checkpoints");
         std::fs::create_dir_all(&checkpoints_dir)?;
-        log::info!("Created meeting folder with checkpoints: {}", meeting_folder.display());
+        log::info!(
+            "Created meeting folder with checkpoints: {}",
+            meeting_folder.display()
+        );
     } else {
-        log::info!("Created meeting folder without checkpoints: {}", meeting_folder.display());
+        log::info!(
+            "Created meeting folder without checkpoints: {}",
+            meeting_folder.display()
+        );
     }
 
     Ok(meeting_folder)
@@ -69,7 +75,7 @@ pub fn normalize_v2(audio: &[f32]) -> Vec<f32> {
     }
 
     // Increase target RMS for better voice volume while keeping peak in check
-    let target_rms = 0.9;  // Increased from 0.6
+    let target_rms = 0.9; // Increased from 0.6
     let target_peak = 0.95; // Slightly reduced to prevent clipping
 
     let rms_scaling = target_rms / rms;
@@ -162,8 +168,12 @@ impl LoudnessNormalizer {
         const TRUE_PEAK_LIMIT: f64 = -1.0;
         const ANALYZE_CHUNK_SIZE: usize = 512;
 
-        let ebur128 = ebur128::EbuR128::new(channels, sample_rate, ebur128::Mode::I | ebur128::Mode::TRUE_PEAK)
-            .map_err(|e| anyhow::anyhow!("Failed to create EBU R128 normalizer: {}", e))?;
+        let ebur128 = ebur128::EbuR128::new(
+            channels,
+            sample_rate,
+            ebur128::Mode::I | ebur128::Mode::TRUE_PEAK,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create EBU R128 normalizer: {}", e))?;
 
         let true_peak_limit = 10_f32.powf(TRUE_PEAK_LIMIT as f32 / 20.0);
 
@@ -224,20 +234,28 @@ impl LoudnessNormalizer {
     }
 }
 
-/// RNNoise-based noise suppression processor
+enum NoiseSuppressionBackend {
+    #[cfg(target_os = "macos")]
+    DeepFilterNet {
+        input: std::sync::mpsc::SyncSender<Vec<f32>>,
+        output: std::sync::mpsc::Receiver<Vec<f32>>,
+        frame_buffer: Vec<f32>,
+        frame_size: usize,
+    },
+    RnNoise {
+        denoiser: DenoiseState<'static>,
+        frame_buffer: Vec<f32>,
+        frame_size: usize,
+    },
+}
+
+/// Stateful neural microphone enhancement.
 ///
-/// Uses a recurrent neural network to suppress background noise while preserving speech.
-/// Processes audio at 48kHz in 10ms frames (480 samples per frame).
-///
-/// Benefits:
-/// - 10-15 dB noise reduction in typical office/home environments
-/// - Preserves speech quality and intelligibility
-/// - Low latency (~10ms per frame)
-/// - Cross-platform (works on macOS, Windows, Linux)
+/// macOS uses the official full-band DeepFilterNet3 model at 48 kHz. RNNoise
+/// remains a small cross-platform fallback so a model initialization error
+/// never prevents a recording from starting.
 pub struct NoiseSuppressionProcessor {
-    denoiser: DenoiseState<'static>,
-    frame_buffer: Vec<f32>,
-    frame_size: usize,  // 480 samples at 48kHz = 10ms
+    backend: NoiseSuppressionBackend,
 }
 
 impl NoiseSuppressionProcessor {
@@ -253,14 +271,103 @@ impl NoiseSuppressionProcessor {
             ));
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            use df::tract::{DfParams, DfTract, RuntimeParams};
+            use ndarray_df::{Array2, Axis};
+            use std::sync::mpsc;
+            use std::time::Duration;
+
+            // Tract's execution state is intentionally !Send. Own it on one
+            // inference thread instead of running a neural network inside
+            // Core Audio's real-time callback.
+            let (input_tx, input_rx) = mpsc::sync_channel::<Vec<f32>>(64);
+            let (output_tx, output_rx) = mpsc::sync_channel::<Vec<f32>>(64);
+            let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<usize>>(1);
+
+            let thread_result = std::thread::Builder::new()
+                .name("meetily-deepfilternet".to_string())
+                .spawn(move || {
+                    // Limit maximum attenuation so quiet consonants and
+                    // code-switched words are not erased with the noise.
+                    let runtime = RuntimeParams::default().with_atten_lim(35.0);
+                    let mut model = match DfTract::new(DfParams::default(), &runtime) {
+                        Ok(model) => model,
+                        Err(error) => {
+                            let _ = ready_tx.send(Err(anyhow::anyhow!(error)));
+                            return;
+                        }
+                    };
+                    let frame_size = model.hop_size;
+                    if ready_tx.send(Ok(frame_size)).is_err() {
+                        return;
+                    }
+
+                    while let Ok(frame) = input_rx.recv() {
+                        let noisy = match Array2::from_shape_vec((1, frame_size), frame) {
+                            Ok(frame) => frame,
+                            Err(error) => {
+                                warn!("DeepFilterNet input frame error: {error}");
+                                continue;
+                            }
+                        };
+                        let mut enhanced = Array2::<f32>::zeros((1, frame_size));
+                        let result = match model.process(noisy.view(), enhanced.view_mut()) {
+                            Ok(_) => enhanced.index_axis(Axis(0), 0).iter().copied().collect(),
+                            Err(error) => {
+                                warn!("DeepFilterNet frame failed: {error}");
+                                noisy.index_axis(Axis(0), 0).iter().copied().collect()
+                            }
+                        };
+                        if output_tx.send(result).is_err() {
+                            break;
+                        }
+                    }
+                });
+
+            if let Err(error) = thread_result {
+                warn!("Could not start DeepFilterNet worker ({error}); falling back to RNNoise");
+            } else {
+                match ready_rx.recv_timeout(Duration::from_secs(30)) {
+                    Ok(Ok(frame_size)) => {
+                        info!(
+                            "✅ DeepFilterNet3 microphone enhancement initialized ({}-sample frames @ 48kHz)",
+                            frame_size
+                        );
+                        return Ok(Self {
+                            backend: NoiseSuppressionBackend::DeepFilterNet {
+                                input: input_tx,
+                                output: output_rx,
+                                frame_buffer: Vec::with_capacity(frame_size * 2),
+                                frame_size,
+                            },
+                        });
+                    }
+                    Ok(Err(error)) => {
+                        #[cfg(test)]
+                        eprintln!("DeepFilterNet3 initialization error: {error:#}");
+                        warn!(
+                            "DeepFilterNet3 initialization failed ({error}); falling back to RNNoise"
+                        );
+                    }
+                    Err(error) => warn!(
+                        "DeepFilterNet3 initialization timed out ({error}); falling back to RNNoise"
+                    ),
+                }
+            }
+        }
+
         const FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
-
-        info!("Initializing RNNoise noise suppression (frame size: {} samples, 10ms @ 48kHz)", FRAME_SIZE);
-
+        info!(
+            "Initializing RNNoise fallback (frame size: {} samples @ 48kHz)",
+            FRAME_SIZE
+        );
         Ok(Self {
-            denoiser: *DenoiseState::new(),
-            frame_buffer: Vec::with_capacity(FRAME_SIZE * 2),
-            frame_size: FRAME_SIZE,
+            backend: NoiseSuppressionBackend::RnNoise {
+                denoiser: *DenoiseState::new(),
+                frame_buffer: Vec::with_capacity(FRAME_SIZE * 2),
+                frame_size: FRAME_SIZE,
+            },
         })
     }
 
@@ -281,60 +388,85 @@ impl NoiseSuppressionProcessor {
             return Vec::new();
         }
 
-        // CRITICAL: Remember original input length
-        let input_len = samples.len();
+        match &mut self.backend {
+            #[cfg(target_os = "macos")]
+            NoiseSuppressionBackend::DeepFilterNet {
+                input,
+                output: enhanced_output,
+                frame_buffer,
+                frame_size,
+            } => {
+                use std::sync::mpsc::TrySendError;
 
-        // Add new samples to buffer
-        self.frame_buffer.extend_from_slice(samples);
-
-        let mut output = Vec::with_capacity(input_len);
-
-        // Process complete frames
-        while self.frame_buffer.len() >= self.frame_size {
-            // Extract one frame
-            let frame: Vec<f32> = self.frame_buffer.drain(0..self.frame_size).collect();
-
-            // RNNoise processes audio: separate input and output buffers
-            let mut denoised_frame = vec![0.0f32; self.frame_size];
-
-            // Apply noise suppression
-            // process_frame(output: &mut [f32], input: &[f32]) -> f32
-            // Returns VAD probability (0.0-1.0), higher means more likely to be speech
-            let _vad_prob = self.denoiser.process_frame(&mut denoised_frame, &frame);
-
-            output.extend_from_slice(&denoised_frame);
+                frame_buffer.extend_from_slice(samples);
+                let mut output = Vec::with_capacity(samples.len());
+                while frame_buffer.len() >= *frame_size {
+                    let frame: Vec<f32> = frame_buffer.drain(..*frame_size).collect();
+                    match input.try_send(frame) {
+                        Ok(()) => {}
+                        Err(TrySendError::Full(frame)) => {
+                            // Capture must never block or drop audio because
+                            // enhancement temporarily falls behind.
+                            warn!("DeepFilterNet queue full; passing one frame through");
+                            output.extend(frame);
+                        }
+                        Err(TrySendError::Disconnected(frame)) => output.extend(frame),
+                    }
+                }
+                while let Ok(frame) = enhanced_output.try_recv() {
+                    output.extend(frame);
+                }
+                output
+            }
+            NoiseSuppressionBackend::RnNoise {
+                denoiser,
+                frame_buffer,
+                frame_size,
+            } => {
+                frame_buffer.extend_from_slice(samples);
+                let mut output = Vec::with_capacity(samples.len());
+                while frame_buffer.len() >= *frame_size {
+                    let frame: Vec<f32> = frame_buffer.drain(..*frame_size).collect();
+                    let mut denoised_frame = vec![0.0f32; *frame_size];
+                    let _ = denoiser.process_frame(&mut denoised_frame, &frame);
+                    output.extend(denoised_frame);
+                }
+                output
+            }
         }
-
-        // Return processed output without forcing length matching
-        // Frame-based processing naturally creates variable-length output
-        // Downstream pipeline handles this correctly via ring buffer
-        output
     }
 
     /// Get the number of buffered samples waiting for processing
     pub fn buffered_samples(&self) -> usize {
-        self.frame_buffer.len()
+        match &self.backend {
+            #[cfg(target_os = "macos")]
+            NoiseSuppressionBackend::DeepFilterNet { frame_buffer, .. } => frame_buffer.len(),
+            NoiseSuppressionBackend::RnNoise { frame_buffer, .. } => frame_buffer.len(),
+        }
     }
 
     /// Flush any remaining buffered samples
     /// Call this at the end of recording to process partial frames
     pub fn flush(&mut self) -> Vec<f32> {
-        if self.frame_buffer.is_empty() {
+        let (remaining, frame_size) = match &self.backend {
+            #[cfg(target_os = "macos")]
+            NoiseSuppressionBackend::DeepFilterNet {
+                frame_buffer,
+                frame_size,
+                ..
+            } => (frame_buffer.len(), *frame_size),
+            NoiseSuppressionBackend::RnNoise {
+                frame_buffer,
+                frame_size,
+                ..
+            } => (frame_buffer.len(), *frame_size),
+        };
+        if remaining == 0 {
             return Vec::new();
         }
 
-        // Pad the remaining samples to a full frame with zeros
-        let remaining = self.frame_buffer.len();
-        let mut input_frame = self.frame_buffer.clone();
-        if input_frame.len() < self.frame_size {
-            input_frame.resize(self.frame_size, 0.0);
-        }
-
-        let mut output = vec![0.0f32; self.frame_size];
-        self.denoiser.process_frame(&mut output, &input_frame);
-        self.frame_buffer.clear();
-
-        // Return only the original samples (without padding)
+        let padding = vec![0.0; frame_size - remaining];
+        let mut output = self.process(&padding);
         output.truncate(remaining);
         output
     }
@@ -365,7 +497,10 @@ impl HighPassFilter {
         let dt = 1.0 / sample_rate_f;
         let alpha = rc / (rc + dt);
 
-        info!("Initializing high-pass filter: cutoff={}Hz @ {}Hz", cutoff_hz, sample_rate);
+        info!(
+            "Initializing high-pass filter: cutoff={}Hz @ {}Hz",
+            cutoff_hz, sample_rate
+        );
 
         Self {
             sample_rate: sample_rate_f,
@@ -413,7 +548,11 @@ pub fn spectral_subtraction(audio: &[f32], d: f32) -> Result<Vec<f32>> {
 
     // If audio is longer than window size, truncate to prevent overflow
     let processed_audio = if audio.len() > window_size {
-        warn!("Audio length {} exceeds window size {}, truncating", audio.len(), window_size);
+        warn!(
+            "Audio length {} exceeds window size {}, truncating",
+            audio.len(),
+            window_size
+        );
         &audio[..window_size]
     } else {
         audio
@@ -523,73 +662,74 @@ pub fn resample(input: &[f32], from_sample_rate: u32, to_sample_rate: u32) -> Re
     let (sinc_len, interpolation_type, oversampling) = if ratio >= 2.0 {
         // Large upsampling (e.g., 8kHz → 16kHz, 16kHz → 48kHz, 24kHz → 48kHz)
         // Needs high quality to avoid artifacts
-        debug!("High-quality upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
-               from_sample_rate, to_sample_rate, ratio);
+        debug!(
+            "High-quality upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
+            from_sample_rate, to_sample_rate, ratio
+        );
         (
-            512,                              // Longer sinc for smoother interpolation
-            SincInterpolationType::Cubic,     // Cubic for best quality
-            512,                              // Higher oversampling
+            512,                          // Longer sinc for smoother interpolation
+            SincInterpolationType::Cubic, // Cubic for best quality
+            512,                          // Higher oversampling
         )
     } else if ratio >= 1.5 {
         // Moderate upsampling (e.g., 32kHz → 48kHz)
-        debug!("Moderate upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
-               from_sample_rate, to_sample_rate, ratio);
-        (
-            384,
-            SincInterpolationType::Cubic,
-            384,
-        )
+        debug!(
+            "Moderate upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
+            from_sample_rate, to_sample_rate, ratio
+        );
+        (384, SincInterpolationType::Cubic, 384)
     } else if ratio > 1.0 {
         // Small upsampling (e.g., 44.1kHz → 48kHz)
-        debug!("Small upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
-               from_sample_rate, to_sample_rate, ratio);
-        (
-            256,
-            SincInterpolationType::Linear,
-            256,
-        )
+        debug!(
+            "Small upsampling: {}Hz → {}Hz (ratio: {:.2}x)",
+            from_sample_rate, to_sample_rate, ratio
+        );
+        (256, SincInterpolationType::Linear, 256)
     } else if ratio <= 0.5 {
         // Large downsampling (e.g., 48kHz → 16kHz, 48kHz → 8kHz)
         // Needs strong anti-aliasing
-        debug!("Anti-aliased downsampling: {}Hz → {}Hz (ratio: {:.2}x)",
-               from_sample_rate, to_sample_rate, ratio);
+        debug!(
+            "Anti-aliased downsampling: {}Hz → {}Hz (ratio: {:.2}x)",
+            from_sample_rate, to_sample_rate, ratio
+        );
         (
-            512,                              // Longer sinc for anti-aliasing
-            SincInterpolationType::Cubic,     // Cubic for quality
+            512,                          // Longer sinc for anti-aliasing
+            SincInterpolationType::Cubic, // Cubic for quality
             512,
         )
     } else {
         // Moderate downsampling (e.g., 48kHz → 24kHz, 48kHz → 32kHz)
-        debug!("Moderate downsampling: {}Hz → {}Hz (ratio: {:.2}x)",
-               from_sample_rate, to_sample_rate, ratio);
-        (
-            384,
-            SincInterpolationType::Linear,
-            384,
-        )
+        debug!(
+            "Moderate downsampling: {}Hz → {}Hz (ratio: {:.2}x)",
+            from_sample_rate, to_sample_rate, ratio
+        );
+        (384, SincInterpolationType::Linear, 384)
     };
 
     let params = SincInterpolationParameters {
         sinc_len,
-        f_cutoff: 0.95,                      // Preserve most of the frequency content
+        f_cutoff: 0.95, // Preserve most of the frequency content
         interpolation: interpolation_type,
         oversampling_factor: oversampling,
-        window: WindowFunction::BlackmanHarris2,  // Best window for audio
+        window: WindowFunction::BlackmanHarris2, // Best window for audio
     };
 
     let mut resampler = SincFixedIn::<f32>::new(
         ratio,
-        2.0,  // Maximum relative deviation
+        2.0, // Maximum relative deviation
         params,
         input.len(),
-        1,    // Mono
+        1, // Mono
     )?;
 
     let waves_in = vec![input.to_vec()];
     let waves_out = resampler.process(&waves_in, None)?;
 
-    debug!("Resampling complete: {} samples → {} samples",
-           input.len(), waves_out[0].len());
+    debug!(
+        "Resampling complete: {} samples → {} samples",
+        input.len(),
+        waves_out[0].len()
+    );
 
     Ok(waves_out.into_iter().next().unwrap())
 }
@@ -614,7 +754,14 @@ pub fn write_audio_to_file(
     device: &str,
     skip_encoding: bool,
 ) -> Result<String> {
-    write_audio_to_file_with_meeting_name(audio, sample_rate, output_path, device, skip_encoding, None)
+    write_audio_to_file_with_meeting_name(
+        audio,
+        sample_rate,
+        output_path,
+        device,
+        skip_encoding,
+        None,
+    )
 }
 
 pub fn write_audio_to_file_with_meeting_name(
@@ -736,4 +883,40 @@ pub fn write_transcript_json_to_file(
     std::fs::write(&file_path, json_string)?;
 
     Ok(file_path.to_string_lossy().to_string())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod neural_enhancement_tests {
+    use super::{NoiseSuppressionBackend, NoiseSuppressionProcessor};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn deepfilternet_initializes_and_returns_finite_audio() {
+        let mut processor =
+            NoiseSuppressionProcessor::new(48_000).expect("noise suppressor should initialize");
+        assert!(
+            matches!(
+                &processor.backend,
+                NoiseSuppressionBackend::DeepFilterNet { .. }
+            ),
+            "macOS should use DeepFilterNet3 rather than the RNNoise fallback"
+        );
+
+        let input_frame = vec![0.01f32; 480];
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut enhanced = Vec::new();
+        while enhanced.is_empty() && Instant::now() < deadline {
+            enhanced.extend(processor.process(&input_frame));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        assert!(
+            !enhanced.is_empty(),
+            "DeepFilterNet3 did not return an enhanced frame"
+        );
+        assert!(
+            enhanced.iter().all(|sample| sample.is_finite()),
+            "DeepFilterNet3 returned non-finite audio"
+        );
+    }
 }

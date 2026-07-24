@@ -7,12 +7,12 @@
     <a href="https://trendshift.io/repositories/21958" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21958" alt="Zackriya-Solutions%2Fmeetily | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
     <br>
     <br>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases/"><img src="https://img.shields.io/badge/Pre_Release-Link-brightgreen" alt="Pre-Release"></a>
+    <a href="https://github.com/tamirgz/meetily/releases"><img src="https://img.shields.io/badge/Hebrew_builds-Releases-brightgreen" alt="Hebrew-enabled releases"></a>
     <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/zackriya-solutions/meeting-minutes?style=flat">
 </a>
  <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"> <img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/zackriya-solutions/meeting-minutes/total?style=plastic"> </a>
     <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
-    <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img src="https://img.shields.io/badge/Supported_OS-macOS,_Windows-white" alt="Supported OS"></a>
+    <a href="https://github.com/tamirgz/meetily/releases"><img src="https://img.shields.io/badge/Supported_OS-macOS,_Windows,_Linux-white" alt="Supported OS"></a>
     <a href="https://github.com/Zackriya-Solutions/meeting-minutes/releases"><img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/zackriya-solutions/meeting-minutes?include_prereleases&color=yellow">
 </a>
     <br>
@@ -55,6 +55,8 @@ A privacy-first AI meeting assistant that captures, transcribes, and summarizes 
 - [Why Meetily?](#why-meetily)
 - [Features](#features)
 - [Installation](#installation)
+- [Hebrew setup](#hebrew-setup)
+- [Building release installers](#building-release-installers)
 - [Key Features in Action](#key-features-in-action)
 - [System Architecture](#system-architecture)
 - [For Developers](#for-developers)
@@ -101,36 +103,219 @@ Whether you're a defense consultant, enterprise executive, legal professional, o
 - **Open Source:** Meetily is open source and free to use.
 - **Flexible AI Provider Support:** Choose from Ollama (local), Claude, Groq, OpenRouter, or use your own OpenAI-compatible endpoint.
 - **Hebrew Meeting Content:** Transcribe, summarize, edit, and export Hebrew and mixed Hebrew/English meetings with bidirectional text support. See [Hebrew meeting support](docs/HEBREW_SUPPORT.md).
+- **Enhanced macOS Audio:** Apple Silicon builds apply full-band
+  [DeepFilterNet3](https://github.com/Rikorose/DeepFilterNet) speech enhancement
+  to microphone audio before VAD and transcription.
+- **macOS Speaker Labels:** Saved meetings are diarized locally with
+  [FluidAudio](https://github.com/FluidInference/FluidAudio). Anonymous labels
+  such as `Speaker 1` can be renamed to participant names and are included when
+  copying transcripts or generating summaries.
 
 ## Installation
 
+This fork publishes Hebrew-enabled installers from
+[`tamirgz/meetily`](https://github.com/tamirgz/meetily). The release workflow
+builds every platform from the same source revision on native macOS, Windows,
+and Linux runners.
+
 ### 🪟 **Windows**
 
-1. Download the latest `x64-setup.exe` from [Releases](https://github.com/Zackriya-Solutions/meeting-minutes/releases/latest)
-2. Run the installer
+1. Download the latest `x64-setup.exe` or `.msi` from the
+   [fork releases](https://github.com/tamirgz/meetily/releases/latest).
+2. Run the installer. If Windows SmartScreen appears for an unsigned community
+   build, choose **More info → Run anyway** only after verifying the SHA-256
+   checksum published with the release.
+3. Allow microphone access when Windows asks.
 
 ### 🍎 **macOS**
 
-1. Download `meetily_0.4.0_aarch64.dmg` from [Releases](https://github.com/Zackriya-Solutions/meeting-minutes/releases/latest)
+1. Apple Silicon users can download the newest `.dmg` from the
+   [fork releases](https://github.com/tamirgz/meetily/releases/latest).
 2. Open the downloaded `.dmg` file
 3. Drag **Meetily** to your Applications folder
-4. Open **Meetily** from Applications folder
+4. Open **Meetily** from the Applications folder. For an unsigned local build,
+   right-click the app and choose **Open** the first time.
+5. Allow microphone, system-audio, and screen-recording permissions when macOS
+   asks. Restart Meetily after changing those permissions.
 
 ### 🐧 **Linux**
 
-Build from source following our detailed guides:
+Download the latest `.AppImage` or `.deb` from the
+[fork releases](https://github.com/tamirgz/meetily/releases/latest).
+
+For an AppImage:
+
+```bash
+chmod +x meetily_*.AppImage
+./meetily_*.AppImage
+```
+
+For Ubuntu/Debian:
+
+```bash
+sudo apt install ./meetily_*.deb
+```
+
+You can also build from source:
 
 - [Building on Linux](docs/building_in_linux.md)
 - [General Build Instructions](docs/BUILDING.md)
 
-**Quick start:**
+## Hebrew support: post-install configuration
+
+Hebrew support is included in the application, but the large transcription and
+summary models are downloaded after installation. The model downloaded by the
+first-run onboarding may be Parakeet; **Parakeet cannot transcribe Hebrew**.
+Complete the following setup before recording a Hebrew meeting.
+
+### 1. Allow audio capture
+
+On macOS, open **System Settings → Privacy & Security** and allow Meetily under:
+
+- **Microphone**
+- **Screen & System Audio Recording** (called **Screen Recording** on some
+  macOS versions)
+
+Quit and reopen Meetily after changing either permission. Then open
+**Settings → Recordings → Default Audio Devices** and select the microphone and
+system-audio devices that will be used for meetings.
+
+### 2. Download and select a Hebrew transcription model
+
+Open **Settings → Transcription** and set **Transcript Model** to
+**Local Whisper (High Accuracy)**. Download one of these models:
+
+| Model shown in Meetily | Download size | Recommended use |
+| --- | ---: | --- |
+| **Hebrew Large V3 (Ivrit.AI)** | 2.95 GB | Best available Hebrew accuracy; recommended for important meetings |
+| **Hebrew Large V3 Turbo (Ivrit.AI)** | 1.55 GB | Faster transcription and lower resource use, with a small accuracy trade-off |
+
+Wait until the model is marked **Available**, then click its card so it is the
+selected model. For the best result, use **Hebrew Large V3 (Ivrit.AI)**.
+
+In **Meeting vocabulary**, add the spelling of participant names, company and
+product names, acronyms, and English technical terms used in the meeting. For
+example:
+
+```text
+Tamir, Microsoft Sentinel, CrowdStrike, XDR, false positive, regional director
+```
+
+The vocabulary is a transcription hint, not a translation dictionary, and is
+stored only on the local computer.
+
+### 3. Select Hebrew for every recording or import
+
+Return to the recording screen and use its **Language** selector to choose
+**Hebrew** before pressing Record. The language selector is on the recorder; it
+is not a separate page under Settings.
+
+Also choose **Hebrew** in the **Import Audio** or **Enhance / Retranscribe**
+dialog when processing an existing recording. Explicit Hebrew selection is
+more reliable than **Auto** for short chunks and Hebrew/English meetings. If
+Meetily reports that Hebrew requires Whisper, return to
+**Settings → Transcription** and verify that the downloaded Ivrit.AI model is
+selected.
+
+### 4. Configure a Hebrew-capable summary model
+
+Open **Settings → Summary → Summary Model Configuration**:
+
+1. Select **Built-in AI (Offline, No API needed)** as the provider.
+2. Download one of the Qwen models below.
+3. Wait until it is marked **Ready**, click the model card so it is marked
+   **Selected**, and click **Save**.
+
+| Model shown in Meetily | Download size | Recommended use |
+| --- | ---: | --- |
+| **Qwen 3.5 4B (High Quality)** | 2.61 GB | Recommended local model for the most complete Hebrew or English summaries |
+| **Qwen 3.5 2B (Balanced)** | 1.22 GB | Use on lower-memory computers or when faster generation is more important |
+
+The Qwen 4B model is the recommended local summarizer when the computer has
+enough available memory. A cloud provider such as OpenAI, Claude, Groq, or
+OpenRouter can also summarize Hebrew, but requires its own API key and sends
+the transcript to that provider.
+
+Under **Settings → Summary → Summary Language**, choose **＋ Add language**, add
+**Hebrew**, and click the Hebrew language chip to pin it as the default. You can
+override this per meeting from the language control in the summary toolbar.
+Choose **Hebrew** for Hebrew output, or **Auto** to follow the dominant
+transcript language.
+
+### 5. macOS noise reduction and speaker labels
+
+No extra noise-reduction model needs to be configured. The macOS build bundles
+DeepFilterNet3 weights and applies microphone enhancement automatically.
+
+Speaker diarization is also local and is available after the recording is
+saved. Open a saved meeting and click **Speakers** to identify speakers.
+FluidAudio downloads and compiles its Core ML diarization models the first time
+this feature runs, so keep an internet connection available for the first run
+and allow extra processing time. Later runs reuse the local cache. Click a
+speaker label such as `Speaker 1` to rename that speaker throughout the
+meeting. This is speaker separation, not biometric identity recognition.
+
+### 6. Disk space and model locations
+
+Allow at least **7 GB of free disk space** for the recommended Hebrew Large V3
+and Qwen 3.5 4B models plus download and runtime overhead. A smaller setup using
+Hebrew Large V3 Turbo and Qwen 3.5 2B needs approximately 3 GB plus overhead.
+
+Meetily manages the files automatically; do not manually rename or move them.
+The main model directory is:
+
+- macOS: `~/Library/Application Support/com.meetily.ai/models`
+- Windows: `%APPDATA%\com.meetily.ai\models`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/com.meetily.ai/models`
+
+Whisper models are stored in that directory and built-in summary models are in
+its `summary` subdirectory.
+
+### 7. Verify the setup
+
+Record a 30–60 second test containing:
+
+- normal Hebrew speech from two people;
+- participant and company names from **Meeting vocabulary**;
+- a number, a date, and several English technical terms.
+
+After stopping, verify that the transcript is Hebrew, the names are spelled
+correctly, **Speakers** assigns editable labels, and **Regenerate Summary**
+produces Hebrew key points, decisions, next steps, and action items. If the
+transcript is inaccurate, first confirm **Local Whisper**, **Hebrew Large V3
+(Ivrit.AI)**, and the recorder's **Hebrew** language selection.
+
+For mixed Hebrew/English guidance, accuracy checks, import/retranscription, and
+additional troubleshooting, see
+[Hebrew meeting support](docs/HEBREW_SUPPORT.md).
+
+## Building release installers
+
+Desktop installers should be built on their native operating system. In
+particular, Windows packages require Microsoft's MSVC and WebView2 installer
+toolchains and should not be treated as valid when cross-compiled from a Linux
+container.
+
+The [`Build fork installers`](.github/workflows/build-fork-installers.yml)
+workflow builds:
+
+- Apple Silicon macOS: `.dmg`
+- Windows x64: `.msi` and NSIS `-setup.exe`
+- Linux x64: `.deb` and `.AppImage`
+
+Run the workflow manually from GitHub Actions. Pushing a tag such as `v0.4.0-hebrew.1`
+also creates a draft release and attaches all installers plus SHA-256 manifests.
+
+Linux can additionally be built reproducibly with Docker on macOS, Linux, or
+Windows:
 
 ```bash
-git clone https://github.com/Zackriya-Solutions/meeting-minutes
-cd meeting-minutes/frontend
-pnpm install
-./build-gpu.sh
+./scripts/build-linux-docker.sh
 ```
+
+The Docker build writes its output to `release-artifacts/linux/`. See
+[`release-artifacts/README.md`](release-artifacts/README.md) for the artifact
+layout and platform limitations.
 
 ## Key Features in Action
 
@@ -207,6 +392,13 @@ For more details, see the [Architecture documentation](docs/architecture.md).
 
 If you want to contribute to Meetily or build it from source, you'll need to have Rust and Node.js installed. For detailed build instructions, please see the [Building from Source guide](docs/BUILDING.md).
 
+Clone this Hebrew-enabled fork with:
+
+```bash
+git clone https://github.com/tamirgz/meetily.git
+cd meetily
+```
+
 ## Meetily Pro
 
 <p align="center">
@@ -221,7 +413,7 @@ Meetily Community Edition will remain free and open source. PRO exists for users
 
 For the community that helped Meetily grow, we are making the upgrade easier: use coupon code **LAUNCH20** for **20% off Meetily PRO** until the next Meetily Community Edition release.
 
-Speaker diarization is planned for mid-June, bringing automatic speaker separation to PRO meetings.
+This fork includes local speaker diarization in the macOS community build.
 
 ### Key Advantages Over Community Edition:
 
@@ -229,7 +421,7 @@ Speaker diarization is planned for mid-June, bringing automatic speaker separati
 - **Custom Summary Templates**: Tailor summaries to your specific workflow and needs
 - **Advanced Export Options**: PDF, DOCX, and Markdown exports with formatting
 - **Auto-detect and Join Meetings**: Automatic meeting detection and joining
-- **Speaker Identification**: Distinguish between speakers automatically *(Coming Soon)*
+- **Speaker Identification**: Distinguish between speakers automatically
 - **Chat with Meetings**: AI-powered meeting insights and queries *(Coming Soon)*
 - **Calendar Integration**: Seamless integration with your calendar *(Coming Soon)*
 - **Self-Hosted Deployment**: Deploy on your own infrastructure for teams

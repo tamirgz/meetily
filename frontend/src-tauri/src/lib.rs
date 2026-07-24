@@ -51,6 +51,7 @@ pub mod openrouter;
 pub mod parakeet_engine;
 pub mod state;
 pub mod summary;
+pub mod speaker_diarization;
 pub mod tray;
 pub mod utils;
 pub mod whisper_engine;
@@ -733,6 +734,8 @@ pub fn run() {
             api::api_save_meeting_title,
             api::api_save_transcript,
             api::open_meeting_folder,
+            speaker_diarization::api_diarize_meeting,
+            speaker_diarization::api_rename_speaker,
             api::test_backend_connection,
             api::debug_backend_connection,
             api::open_external_url,

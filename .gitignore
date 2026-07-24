@@ -7,6 +7,8 @@
 **/models
 !vendor/silero-rs/models/
 !vendor/silero-rs/models/silero_vad.onnx
+!vendor/deep-filter/models/
+!vendor/deep-filter/models/DeepFilterNet3_onnx.tar.gz
 /.pnp
 .pnp.*
 .yarn/*
@@ -79,3 +81,11 @@ experiments/
 target/
 
 frontend/src-tauri/binaries/
+
+# Installers are published as GitHub Release assets. GitHub rejects normal Git
+# objects above 100 MB, and public forks cannot upload new Git LFS objects.
+/release-artifacts/**/*.AppImage
+/release-artifacts/**/*.deb
+/release-artifacts/**/*.dmg
+/release-artifacts/**/*.msi
+/release-artifacts/**/*.exe

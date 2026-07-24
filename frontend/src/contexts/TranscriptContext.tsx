@@ -465,7 +465,10 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     };
 
     const fullTranscript = transcripts
-      .map(t => `${formatTime(t.audio_start_time)} ${t.text}`)
+      .map(t => {
+        const speaker = t.speaker ? ` ${t.speaker}:` : '';
+        return `${formatTime(t.audio_start_time)}${speaker} ${t.text}`;
+      })
       .join('\n');
     navigator.clipboard.writeText(fullTranscript);
 

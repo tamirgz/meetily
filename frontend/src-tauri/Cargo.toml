@@ -173,6 +173,20 @@ core-graphics = "0.23"
 cidre = { git = "https://github.com/yury/cidre", rev = "a9587fa", features = ["av"] }
 dasp = "0.11.0"
 futures-channel = "0.3.31"
+# Apple Neural Engine/Core ML speaker diarization. Keep this macOS-only:
+# FluidAudio's Swift bridge does not support Windows or Linux.
+fluidaudio-rs = { version = "0.14.1", default-features = false, features = ["diarization"] }
+# Full-band neural speech enhancement for the microphone path. The official
+# crate and DFN3 weights are vendored so builds are reproducible; the local
+# compatibility patch is documented in vendor/deep-filter/UPSTREAM.md.
+deep_filter = { path = "../../vendor/deep-filter/libDF", default-features = false, features = ["tract", "default-model", "logging"] }
+ndarray_df = { package = "ndarray", version = "0.16" }
+# Keep all Tract crates on one patch release. DeepFilterNet's model requires
+# fixes made after 0.21.4 (that version rejects the graph during compaction).
+tract-core = "=0.21.10"
+tract-hir = "=0.21.10"
+tract-onnx = "=0.21.10"
+tract-pulse = "=0.21.10"
 
 # PERFORMANCE: Enable Metal GPU + CoreML acceleration automatically on macOS
 # CoreML provides additional acceleration for Apple Silicon chips

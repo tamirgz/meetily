@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateContext';
@@ -292,6 +293,28 @@ export function useRecordingStop(
           console.log('✅ Successfully saved COMPLETE meeting with ID:', meetingId);
           console.log('   Transcripts:', freshTranscripts.length);
           console.log('   folder_path:', folderPath);
+
+          // Run speaker diarization after persistence so it cannot delay or
+          // destabilize real-time capture/transcription. This continues in
+          // the native backend while the meeting page opens.
+          if (folderPath) {
+            void invoke<{
+              speakers: number;
+              transcripts_labeled: number;
+            }>('api_diarize_meeting', { meetingId })
+              .then(async result => {
+                await refetchMeetings();
+                toast.success('Speaker labels are ready', {
+                  description: `${result.speakers} speakers identified across ${result.transcripts_labeled} transcript segments.`,
+                });
+              })
+              .catch(error => {
+                console.warn('Automatic speaker diarization did not complete:', error);
+                toast.warning('Speaker identification was not completed', {
+                  description: 'Open the meeting and use the Speakers button to retry.',
+                });
+              });
+          }
 
           // Mark meeting as saved in IndexedDB (for recovery system)
           await markMeetingAsSaved();
